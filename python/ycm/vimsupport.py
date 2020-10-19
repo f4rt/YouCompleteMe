@@ -398,9 +398,6 @@ def ComputeFittingHeightForCurrentWindow():
 
 
 def SetFittingHeightForCurrentWindow():
-  if int( vim.current.buffer.vars.get( 'ycm_no_resize', 0 ) ):
-    return
-
   vim.command( f'{ ComputeFittingHeightForCurrentWindow() }wincmd _' )
 
 
