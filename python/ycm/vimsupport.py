@@ -715,10 +715,7 @@ def EscapeForVim( text ):
 
 
 def CurrentFiletypes():
-  filetypes = vim.eval( "&filetype" )
-  if not filetypes:
-    filetypes = 'ycm_nofiletype'
-  return ToUnicode( filetypes ).split( '.' )
+  return ToUnicode( vim.eval( "&filetype" ) ).split( '.' )
 
 
 def CurrentFiletypesEnabled( disabled_filetypes ):
@@ -732,10 +729,7 @@ def CurrentFiletypesEnabled( disabled_filetypes ):
 
 def GetBufferFiletypes( bufnr ):
   command = f'getbufvar({ bufnr }, "&ft")'
-  filetypes = vim.eval( command )
-  if not filetypes:
-    filetypes = 'ycm_nofiletype'
-  return ToUnicode( filetypes ).split( '.' )
+  return ToUnicode( vim.eval( command ) ).split( '.' )
 
 
 def FiletypesForBuffer( buffer_object ):
