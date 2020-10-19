@@ -15,17 +15,32 @@
 # You should have received a copy of the GNU General Public License
 # along with YouCompleteMe.  If not, see <http://www.gnu.org/licenses/>.
 
+from ycm import vimsupport
 import re
 
 
 class DiagnosticFilter:
   def __init__( self, config_or_filters ):
-    self._filters : list = config_or_filters
+    if isinstance( config_or_filters, list ):
+      self._filters = config_or_filters
+
+    else:
+      self._filters = _CompileFilters( config_or_filters )
 
 
   def IsAllowed( self, diagnostic ):
-    return not any( filterMatches( diagnostic )
-                    for filterMatches in self._filters )
+    # NOTE: a diagnostic IsAllowed() ONLY if NO filters match it
+    for filterMatches in self._filters:
+      if filterMatches( diagnostic ):
+        return False
+
+    return True
+
+
+  def SubsetForTypes( self, filetypes ):
+    """Return a sub-filter limited to the given filetypes"""
+    # NOTE: actually, this class is already filtered
+    return self
 
 
   @staticmethod
@@ -33,7 +48,9 @@ class DiagnosticFilter:
     all_filters = user_options[ 'filter_diagnostics' ]
     compiled_by_type = {}
     for type_spec, filter_value in all_filters.items():
-      filetypes = type_spec.split( ',' )
+      filetypes = [ type_spec ]
+      if type_spec.find( ',' ) != -1:
+        filetypes = type_spec.split( ',' )
       for filetype in filetypes:
         compiled_by_type[ filetype ] = _CompileFilters( filter_value )
 
@@ -45,6 +62,15 @@ class _MasterDiagnosticFilter:
   def __init__( self, all_filters ):
     self._all_filters = all_filters
     self._cache = {}
+
+
+  def IsAllowed( self, diagnostic ):
+    # NOTE: in this class's implementation, we ask vimsupport for
+    #  the current filetypes and delegate automatically; it is probably,
+    #  more efficient, however, to call SubsetForTypes() and reuse
+    #  the returned DiagnosticFilter if it will be checked repeatedly.
+    filetypes = vimsupport.CurrentFiletypes()
+    return self.SubsetForTypes( filetypes ).IsAllowed( diagnostic )
 
 
   def SubsetForTypes( self, filetypes ):
@@ -69,6 +95,9 @@ class _MasterDiagnosticFilter:
 def _ListOf( config_entry ):
   if isinstance( config_entry, list ):
     return config_entry
+
+  if config_entry is None:
+    return []
 
   return [ config_entry ]
 
@@ -102,11 +131,11 @@ def _CompileFilters( config ):
   """Given a filter config dictionary, return a list of compiled filters"""
   filters = []
 
-  for filter_type, filter_pattern in config.items():
+  for filter_type in config.keys():
     compiler = FILTER_COMPILERS.get( filter_type )
 
     if compiler is not None:
-      for filter_config in _ListOf( filter_pattern ):
+      for filter_config in _ListOf( config[ filter_type ] ):
         compiledFilter = compiler( filter_config )
         filters.append( compiledFilter )
 
