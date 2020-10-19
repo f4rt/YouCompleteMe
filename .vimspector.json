@@ -1,5 +1,4 @@
 {
-  "$schema": "https://puremourning.github.io/vimspector/schema/vimspector.schema.json",
   "configurations": {
     "python - launch pytest": {
       "adapter": "debugpy",
