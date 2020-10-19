@@ -5,7 +5,8 @@ function! SetUp()
   let g:ycm_keep_logfiles = 1
   let g:ycm_log_level = 'DEBUG'
 
-  let g:ycm_add_preview_to_completeopt = 1
+  " Use the default, which _should_ be the new API
+  unlet! g:ycm_use_completion_api
 
   call youcompleteme#test#setup#SetUp()
 endfunction
@@ -16,7 +17,7 @@ endfunction
 
 exe 'source' expand( "<sfile>:p:h" ) .. '/completion.common.vim'
 
-function! Test_Using_Upfront_Resolve()
+function! Test_Using_New_API()
   let debug_info = split( execute( 'YcmDebugInfo' ), "\n" )
   enew
   setf cpp
@@ -24,14 +25,14 @@ function! Test_Using_Upfront_Resolve()
   call assert_equal( '', &completefunc )
 
   for line in debug_info
-    if line =~# "^-- Resolve completions: "
-      let ver = substitute( line, "^-- Resolve completions: ", "", "" )
-      call assert_equal( 'Up front', ver, 'API version' )
+    if line =~# "^-- Completion API: "
+      let ver = substitute( line, "^-- Completion API: ", "", "" )
+      call assert_equal( '1', ver, 'API version' )
       return
     endif
   endfor
 
-  call assert_report( "Didn't find the resolve type in the YcmDebugInfo" )
+  call assert_report( "Didn't find the API version in the YcmDebugInfo" )
 
   %bwipeout!
 endfunction

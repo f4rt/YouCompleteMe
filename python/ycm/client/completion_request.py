@@ -18,10 +18,9 @@
 import json
 import logging
 from ycmd.utils import ToUnicode
-from ycm.client.base_request import ( BaseRequest,
-                                      DisplayServerException,
+from ycm.client.base_request import ( BaseRequest, DisplayServerException,
                                       MakeServerException )
-from ycm import vimsupport, base
+from ycm import vimsupport
 from ycm.vimsupport import NO_COMPLETIONS
 
 _logger = logging.getLogger( __name__ )
@@ -29,7 +28,7 @@ _logger = logging.getLogger( __name__ )
 
 class CompletionRequest( BaseRequest ):
   def __init__( self, request_data ):
-    super().__init__()
+    super( CompletionRequest, self ).__init__()
     self.request_data = request_data
     self._response_future = None
 
@@ -68,10 +67,6 @@ class CompletionRequest( BaseRequest ):
   def Response( self ):
     response = self._RawResponse()
     response[ 'completions' ] = _ConvertCompletionDatasToVimDatas(
-        response[ 'completions' ] )
-    # FIXME: Do we really need to do this AdjustCandidateInsertionText ? I feel
-    # like Vim should do that for us
-    response[ 'completions' ] = base.AdjustCandidateInsertionText(
         response[ 'completions' ] )
     return response
 
@@ -156,7 +151,7 @@ def _FilterToMatchingCompletions( completed_item, completions ):
   match_keys = [ 'word', 'abbr', 'menu', 'info' ]
   matched_completions = []
   for completion in completions:
-    item = ConvertCompletionDataToVimData( completion )
+    item = _ConvertCompletionDataToVimData( completion )
 
     def matcher( key ):
       return ( ToUnicode( completed_item.get( key, "" ) ) ==
@@ -183,7 +178,7 @@ def _GetCompletionInfoField( completion_data ):
   return info.replace( '\x00', '' )
 
 
-def ConvertCompletionDataToVimData( completion_data ):
+def _ConvertCompletionDataToVimData( completion_data ):
   # See :h complete-items for a description of the dictionary fields.
   extra_menu_info = completion_data.get( 'extra_menu_info', '' )
   preview_info = _GetCompletionInfoField( completion_data )
@@ -224,4 +219,4 @@ def ConvertCompletionDataToVimData( completion_data ):
 
 
 def _ConvertCompletionDatasToVimDatas( response_data ):
-  return [ ConvertCompletionDataToVimData( x ) for x in response_data ]
+  return [ _ConvertCompletionDataToVimData( x ) for x in response_data ]

@@ -19,11 +19,6 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
-" NOTE: Noevim reports v:version as 800, which is garbage. For some features
-" that are supporetd by our minimum Vim version, we have to guard them against
-" neovim, which doesn't implement them.
-let s:is_neovim = has( 'nvim' )
-
 " This needs to be called outside of a function
 let s:script_folder_path = escape( expand( '<sfile>:p:h' ), '\' )
 let s:force_semantic = 0
@@ -69,12 +64,28 @@ let s:last_char_inserted_by_user = v:true
 let s:enable_hover = 0
 let s:cursorhold_popup = -1
 
-let s:force_preview_popup = 0
+" We can use one of two approaches to auto-triggering completion
+"  * completefunc - the classic way - we set completefunc to our function and
+"    use feedkeys() to trigger user-defined
+"  * complete() - the 'new' way - this uses complete() and TextChangedP to avoid
+"    closing the pum on every keystroke. This reduces redraw and flickering
+"    appreciably, but is only supported on more recent vims.
+let s:COMPLETION_COMPLETEFUNC = 0
+let s:COMPLETION_TEXTCHANGEDP = 1
 
-let s:RESOLVE_NONE = 0
-let s:RESOLVE_UP_FRONT = 1
-let s:RESOLVE_ON_DEMAND = 2
-let s:resolve_completions = s:RESOLVE_NONE
+" By default (if possible) use the new complete()/TextChangedP API
+let s:completion_api = get( g:,
+                          \ 'ycm_use_completion_api',
+                          \ s:COMPLETION_TEXTCHANGEDP )
+
+" Fall back to using completefunc if the TextChangedP/CompleteChanged API
+" isn't available. Both are needed to ensure correct behaviour with the 'new'
+" complete() api
+if !exists( '##TextChangedP' ) || !exists( '##CompleteChanged' )
+      \ || s:completion_api != s:COMPLETION_TEXTCHANGEDP
+  let s:completion_api = s:COMPLETION_COMPLETEFUNC
+endif
+
 
 function! s:StartMessagePoll()
   if s:pollers.receive_messages.id < 0
@@ -120,47 +131,6 @@ endfunction
 function! youcompleteme#Enable()
   call s:SetUpBackwardsCompatibility()
 
-  let completeopt = split( &completeopt, ',' )
-
-  " Will we add 'popup' to the 'completeopt' (later)
-  let s:force_preview_popup =
-        \ type( g:ycm_add_preview_to_completeopt ) == v:t_string &&
-          \ g:ycm_add_preview_to_completeopt ==# 'popup' &&
-          \ !s:is_neovim
-
-  " Will we add 'preview' to the 'completeopt' (later)
-  let force_preview =
-        \ type( g:ycm_add_preview_to_completeopt ) != v:t_string &&
-          \ g:ycm_add_preview_to_completeopt
-
-  " Will we be using the preview popup ? That is either the user set it in their
-  " compelteopt or we're going to add it later.
-  let use_preview_popup =
-        \ s:force_preview_popup ||
-        \ index( completeopt, 'popup' ) >= 0
-
-  " We should only ask the server to resolve completion items upfront if we're
-  " going to display them - that is either:
-  "  - popup is (or will be) in completeopt
-  "  - preview is (or will be) in completeopt, or
-  let require_resolve =
-        \ use_preview_popup ||
-        \ force_preview ||
-        \ index( completeopt, 'preview' ) >= 0
-
-  if use_preview_popup && exists( '*popup_findinfo' )
-    " If the preview popup is going to be used, and on-demand resolve can be
-    " supported, enable it.
-    let s:resolve_completions = s:RESOLVE_ON_DEMAND
-  elseif require_resolve
-    " The preview window or info popup is enalbed - request the server
-    " pre-resolves completion items
-    let s:resolve_completions = s:RESOLVE_UP_FRONT
-  else
-    " Otherwise, there's no point in resolving completions - they'll never be
-    " displayed.
-  endif
-
   if !s:SetUpPython()
     return
   endif
@@ -185,7 +155,9 @@ function! youcompleteme#Enable()
     autocmd InsertLeave * call s:OnInsertLeave()
     autocmd VimLeave * call s:OnVimLeave()
     autocmd CompleteDone * call s:OnCompleteDone()
-    autocmd CompleteChanged * call s:OnCompleteChanged()
+    if exists( '##CompleteChanged' )
+      autocmd CompleteChanged * call s:OnCompleteChanged()
+    endif
     autocmd BufEnter,WinEnter * call s:UpdateMatches()
   augroup END
 
@@ -216,7 +188,9 @@ function! youcompleteme#EnableCursorMovedAutocommands()
     autocmd CursorMoved * call s:OnCursorMovedNormalMode()
     autocmd TextChanged * call s:OnTextChangedNormalMode()
     autocmd TextChangedI * call s:OnTextChangedInsertMode( v:false )
-    autocmd TextChangedP * call s:OnTextChangedInsertMode( v:true )
+    if s:completion_api == s:COMPLETION_TEXTCHANGEDP
+      autocmd TextChangedP * call s:OnTextChangedInsertMode( v:true )
+    endif
     autocmd InsertCharPre * call s:OnInsertChar()
   augroup END
 endfunction
@@ -272,24 +246,7 @@ try:
     ycm_state.OnVimLeave()
     del ycm_state
 
-  # If we're able to resolve completion details asynchronously, set the option
-  # which enables this in the server.
-  if int( vim.eval( 's:resolve_completions == s:RESOLVE_ON_DEMAND' ) ):
-    # resovle a small number upfront, the rest on demand
-    default_options = {
-      'max_num_candidates_to_detail': 10
-    }
-  elif int( vim.eval( 's:resolve_completions == s:RESOLVE_NONE' ) ):
-    # don't reasolve any
-    default_options = {
-      'max_num_candidates_to_detail': 0
-    }
-  else:
-    # i.e. s:resolve_completions == s:RESOLVE_UP_FRONT
-    # The server will decide - i.e. resovle everything upfront
-    default_options = {}
-
-  ycm_state = youcompleteme.YouCompleteMe( default_options )
+  ycm_state = youcompleteme.YouCompleteMe()
 except Exception as error:
   # We don't use PostVimMessage or EchoText from the vimsupport module because
   # importing this module may fail.
@@ -358,6 +315,16 @@ function! s:SetUpKeyMappings()
   if !empty( g:ycm_key_detailed_diagnostics )
     silent! exe 'nnoremap <unique> ' . g:ycm_key_detailed_diagnostics .
           \ ' :YcmShowDetailedDiagnostic<CR>'
+  endif
+
+  if s:completion_api == s:COMPLETION_COMPLETEFUNC
+    " The TextChangedI event is not triggered when deleting a character while
+    " the completion menu is open. We handle this by closing the completion menu
+    " on the keys that delete a character in insert mode.
+    for key in [ "<BS>", "<C-h>" ]
+      silent! exe 'inoremap <unique> <expr> ' . key .
+            \ ' <SID>OnDeleteChar( "\' . key . '" )'
+    endfor
   endif
 endfunction
 
@@ -479,10 +446,10 @@ function! s:AllowedToCompleteInBuffer( buffer )
 
   let filetype = getbufvar( a:buffer, '&filetype' )
 
-  let whitelist_allows = type( g:ycm_filetype_whitelist ) != v:t_dict ||
+  let whitelist_allows = type( g:ycm_filetype_whitelist ) != type( {} ) ||
         \ has_key( g:ycm_filetype_whitelist, '*' ) ||
         \ s:HasAnyKey( g:ycm_filetype_whitelist, split( filetype, '\.' ) )
-  let blacklist_allows = type( g:ycm_filetype_blacklist ) != v:t_dict ||
+  let blacklist_allows = type( g:ycm_filetype_blacklist ) != type( {} ) ||
         \ !s:HasAnyKey( g:ycm_filetype_blacklist, split( filetype, '\.' ) )
 
   let allowed = whitelist_allows && blacklist_allows
@@ -541,11 +508,12 @@ function! s:SetUpCompleteopt()
   " Also, having this option set breaks the plugin.
   set completeopt-=longest
 
-  if s:resolve_completions == s:RESOLVE_ON_DEMAND
-    set completeopt+=popuphidden
-  endif
-
-  if s:force_preview_popup
+  " A non-numeric string compares equal to an integer zero. Without the type
+  " check, users on a recent vim and disabling preview by setting it to 0
+  " get `popup` added instead.
+  if type( g:ycm_add_preview_to_completeopt ) == type( '' ) &&
+	\ g:ycm_add_preview_to_completeopt ==# 'popup' && 
+        \ ( v:version > 801 || ( v:version == 801 && has( 'patch1880' ) ) )
     set completeopt+=popup
   elseif g:ycm_add_preview_to_completeopt
     set completeopt+=preview
@@ -553,7 +521,10 @@ function! s:SetUpCompleteopt()
 endfunction
 
 
-function! s:EnableCompletingInCurrentBuffer()
+function! s:SetCompleteFunc()
+  if s:completion_api == s:COMPLETION_COMPLETEFUNC
+    let &completefunc = 'youcompleteme#CompleteFunc'
+  endif
   let b:ycm_completing = 1
 endfunction
 
@@ -593,29 +564,9 @@ function! s:OnCompleteChanged()
 
   if ! empty( v:event.completed_item )
     let s:last_char_inserted_by_user = v:false
-    call s:ResolveCompletionItem( v:event.completed_item )
   endif
 
   call s:UpdateSignatureHelp()
-endfunction
-
-
-function! s:ResolveCompletionItem( item )
-  if s:resolve_completions != s:RESOLVE_ON_DEMAND
-    return
-  endif
-
-  let complete_mode = complete_info( [ 'mode' ] ).mode
-  if complete_mode !=# 'eval' && complete_mode !=# 'function'
-    return
-  endif
-
-  if py3eval( 'ycm_state.ResolveCompletionItem( vim.eval( "a:item" ) )' )
-    call s:StopPoller( s:pollers.completion )
-    call timer_start( 0, function( 's:PollResolve', [ a:item ] ) )
-  else
-    call s:ShowInfoPopup( a:item )
-  endif
 endfunction
 
 
@@ -649,7 +600,7 @@ function! s:OnFileTypeSet()
   endif
 
   call s:SetUpCompleteopt()
-  call s:EnableCompletingInCurrentBuffer()
+  call s:SetCompleteFunc()
   call s:StartMessagePoll()
   call s:EnableAutoHover()
 
@@ -674,7 +625,7 @@ function! s:OnBufferEnter()
   endif
 
   call s:SetUpCompleteopt()
-  call s:EnableCompletingInCurrentBuffer()
+  call s:SetCompleteFunc()
 
   py3 ycm_state.OnBufferVisit()
   " Last parse may be outdated because of changes from other buffers. Force a
@@ -780,7 +731,29 @@ function! s:OnInsertChar()
   endif
 
   let s:last_char_inserted_by_user = v:true
+
+  if s:completion_api == s:COMPLETION_COMPLETEFUNC
+    call s:StopPoller( s:pollers.completion )
+    call s:StopPoller( s:pollers.signature_help )
+    call s:CloseCompletionMenu()
+  endif
 endfunction
+
+
+if s:completion_api == s:COMPLETION_COMPLETEFUNC
+  function! s:OnDeleteChar( key )
+    if !s:AllowedToCompleteInCurrentBuffer()
+      return a:key
+    endif
+
+    call s:StopPoller( s:pollers.completion )
+    call s:StopPoller( s:pollers.signature_help )
+    if pumvisible()
+      return "\<C-y>" . a:key
+    endif
+    return a:key
+  endfunction
+endif
 
 
 function! s:StopCompletion( key )
@@ -957,12 +930,15 @@ endfunction
 
 
 function! s:RequestCompletion()
-  call s:StopPoller( s:pollers.completion )
+  if s:completion_api == s:COMPLETION_TEXTCHANGEDP
+    call s:StopPoller( s:pollers.completion )
+  endif
 
   py3 ycm_state.SendCompletionRequest(
         \ vimsupport.GetBoolValue( 's:force_semantic' ) )
 
-  if py3eval( 'ycm_state.CompletionRequestReady()' )
+  if s:completion_api == s:COMPLETION_TEXTCHANGEDP &&
+        \ py3eval( 'ycm_state.CompletionRequestReady()' )
     " We can't call complete() syncrhounsouly in the TextChangedI/TextChangedP
     " autocommmands (it's designed to be used async only completion). The result
     " (somewhat oddly) is that the completion menu is shown, but ctrl-n doesn't
@@ -986,10 +962,13 @@ function! s:RequestSemanticCompletion()
 
   if get( b:, 'ycm_completing' )
     let s:force_semantic = 1
-    call s:StopPoller( s:pollers.completion )
+    if s:completion_api == s:COMPLETION_TEXTCHANGEDP
+      call s:StopPoller( s:pollers.completion )
+    endif
     py3 ycm_state.SendCompletionRequest( True )
 
-    if py3eval( 'ycm_state.CompletionRequestReady()' )
+    if s:completion_api == s:COMPLETION_TEXTCHANGEDP &&
+          \ py3eval( 'ycm_state.CompletionRequestReady()' )
       " We can't call complete() syncrhounsouly in the TextChangedI/TextChangedP
       " autocommmands (it's designed to be used async only completion). The
       " result (somewhat oddly) is that the completion menu is shown, but ctrl-n
@@ -1022,38 +1001,6 @@ function! s:PollCompletion( ... )
 
   let s:completion = py3eval( 'ycm_state.GetCompletionResponse()' )
   call s:Complete()
-endfunction
-
-
-function! s:PollResolve( item, ... )
-  if !py3eval( 'ycm_state.CompletionRequestReady()' )
-    let s:pollers.completion.id = timer_start(
-          \ s:pollers.completion.wait_milliseconds,
-          \ function( 's:PollResolve', [ a:item ] ) )
-    return
-  endif
-
-  " Note we re-use the 'completion' request for resolves. This prevents us
-  " sending a completion request and a resolve request at the same time, as
-  " resolve requests re-use the requset data from the last completion request
-  " and it must not change.
-  " We also re-use the poller, so that any new completion request effectively
-  " cancels this poller.
-  let completion_item =
-        \ py3eval( 'ycm_state.GetCompletionResponse()[ "completion" ]' )
-  if empty( completion_item ) || empty( completion_item.info )
-    return
-  endif
-
-  call s:ShowInfoPopup( completion_item )
-endfunction
-
-function! s:ShowInfoPopup( completion_item )
-  let id = popup_findinfo()
-  if id
-    call popup_settext( id, split( a:completion_item.info, '\n' ) )
-    call popup_show( id )
-  endif
 endfunction
 
 
@@ -1097,37 +1044,85 @@ function! s:PollSignatureHelp( ... )
   call s:UpdateSignatureHelp()
 endfunction
 
-function! s:Complete()
-  " It's possible for us to be called (by our timer) when we're not _strictly_
-  " in insert mode. This can happen when mode is temporarily switched, e.g.
-  " due to Ctrl-r or Ctrl-o or a timer or something. If we're not in insert
-  " mode _now_ do nothing (FIXME: or should we queue a timer ?)
-  if count( [ 'i', 'R' ], mode() ) == 0
-    return
-  endif
 
-  if s:completion.line != line( '.' )
-    " Given
-    "   scb: column where the completion starts before auto-wrapping
-    "   cb: cursor column before auto-wrapping
-    "   sca: column where the completion starts after auto-wrapping
-    "   ca: cursor column after auto-wrapping
-    " we have
-    "   ca - sca = cb - scb
-    "   sca = scb + ca - cb
-    let s:completion.completion_start_column +=
-          \ col( '.' ) - s:completion.column
-  endif
-  if len( s:completion.completions )
-    let old_completeopt = &completeopt
-    set completeopt+=noselect
-    call complete( s:completion.completion_start_column,
-                 \ s:completion.completions )
-    let &completeopt = old_completeopt
-  elseif pumvisible()
-    call s:CloseCompletionMenu()
-  endif
-endfunction
+if s:completion_api == s:COMPLETION_TEXTCHANGEDP
+  function! s:Complete()
+    " It's possible for us to be called (by our timer) when we're not _strictly_
+    " in insert mode. This can happen when mode is temporarily switched, e.g.
+    " due to Ctrl-r or Ctrl-o or a timer or something. If we're not in insert
+    " mode _now_ do nothing (FIXME: or should we queue a timer ?)
+    if count( [ 'i', 'R' ], mode() ) == 0
+      return
+    endif
+
+    if s:completion.line != line( '.' )
+      " Given
+      "   scb: column where the completion starts before auto-wrapping
+      "   cb: cursor column before auto-wrapping
+      "   sca: column where the completion starts after auto-wrapping
+      "   ca: cursor column after auto-wrapping
+      " we have
+      "   ca - sca = cb - scb
+      "   sca = scb + ca - cb
+      let s:completion.completion_start_column +=
+            \ col( '.' ) - s:completion.column
+    endif
+    if len( s:completion.completions )
+      let old_completeopt = &completeopt
+      set completeopt+=noselect
+      call complete( s:completion.completion_start_column,
+                   \ s:completion.completions )
+      let &completeopt = old_completeopt
+    elseif pumvisible()
+      call s:CloseCompletionMenu()
+    endif
+  endfunction
+else
+  function! s:Complete()
+    " Do not call user's completion function if the start column is after the
+    " current column or if there are no candidates. Close the completion menu
+    " instead. This avoids keeping the user in completion mode.
+    if s:completion.completion_start_column > s:completion.column ||
+          \ empty( s:completion.completions )
+      call s:CloseCompletionMenu()
+    else
+      " <c-x><c-u> invokes the user's completion function (which we have set to
+      " youcompleteme#CompleteFunc), and <c-p> tells Vim to select the previous
+      " completion candidate. This is necessary because by default, Vim selects
+      " the first candidate when completion is invoked, and selecting a
+      " candidate automatically replaces the current text with it. Calling <c-p>
+      " forces Vim to deselect the first candidate and in turn preserve the
+      " user's current text until he explicitly chooses to replace it with a
+      " completion.
+      call s:SendKeys( "\<C-X>\<C-U>\<C-P>" )
+    endif
+    " Displaying or hiding the PUM might mean we need to hide the sig help
+    call s:UpdateSignatureHelp()
+  endfunction
+
+  function! youcompleteme#CompleteFunc( findstart, base )
+    if a:findstart
+      " When auto-wrapping is enabled, Vim wraps the current line after the
+      " completion request is sent but before calling this function. The
+      " starting column returned by the server is invalid in that case and must
+      " be recomputed.
+      if s:completion.line != line( '.' )
+        " Given
+        "   scb: column where the completion starts before auto-wrapping
+        "   cb: cursor column before auto-wrapping
+        "   sca: column where the completion starts after auto-wrapping
+        "   ca: cursor column after auto-wrapping
+        " we have
+        "   ca - sca = cb - scb
+        "   sca = scb + ca - cb
+        let s:completion.completion_start_column +=
+              \ col( '.' ) - s:completion.column
+      endif
+      return s:completion.completion_start_column - 1
+    endif
+    return s:completion.completions
+  endfunction
+endif
 
 function! s:UpdateSignatureHelp()
   if !s:ShouldUseSignatureHelp()
@@ -1162,12 +1157,21 @@ function! s:SetUpCommands()
         \ YcmToggleLogs call s:ToggleLogs( <f-count>,
                                          \ <f-mods>,
                                          \ <f-args>)
-  command! -nargs=* -complete=custom,youcompleteme#SubCommandsComplete -range
-        \ YcmCompleter call s:CompleterCommand(<q-mods>,
-        \                                      <count>,
-        \                                      <line1>,
-        \                                      <line2>,
-        \                                      <f-args>)
+  if py3eval( 'vimsupport.VimVersionAtLeast( "7.4.1898" )' )
+    command! -nargs=* -complete=custom,youcompleteme#SubCommandsComplete -range
+          \ YcmCompleter call s:CompleterCommand(<q-mods>,
+          \                                      <count>,
+          \                                      <line1>,
+          \                                      <line2>,
+          \                                      <f-args>)
+  else
+    command! -nargs=* -complete=custom,youcompleteme#SubCommandsComplete -range
+          \ YcmCompleter call s:CompleterCommand('',
+          \                                      <count>,
+          \                                      <line1>,
+          \                                      <line2>,
+          \                                      <f-args>)
+  endif
   command! YcmDiags call s:ShowDiagnostics()
   command! YcmShowDetailedDiagnostic call s:ShowDetailedDiagnostic()
   command! YcmForceCompileAndDiagnostics call s:ForceCompileAndDiagnostics()
@@ -1193,10 +1197,7 @@ endfunction
 function! s:DebugInfo()
   echom "Printing YouCompleteMe debug information..."
   let debug_info = py3eval( 'ycm_state.DebugInfo()' )
-  echom '-- Resolve completions:'
-        \ ( s:resolve_completions == s:RESOLVE_ON_DEMAND ? 'On demand' :
-        \      s:resolve_completions == s:RESOLVE_UP_FRONT ? 'Up front' :
-        \       'Never' )
+  echom '-- Completion API: ' . string( s:completion_api )
   for line in split( debug_info, "\n" )
     echom '-- ' . line
   endfor

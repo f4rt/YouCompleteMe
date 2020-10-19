@@ -1,6 +1,4 @@
-scriptencoding utf-8
-
-function! CheckCompletionItems( expected_props, ... )
+function! s:CheckCompletionItems( expected_props, ... )
   let prop = 'abbr'
   if a:0 > 0
     let prop = a:1
@@ -24,17 +22,17 @@ function! CheckCompletionItems( expected_props, ... )
         \ .. string( abbrs ) )
 endfunction
 
-function! FeedAndCheckMain( keys, func )
+function! s:FeedAndCheckMain( keys, func )
   call timer_start( 500, a:func )
   call feedkeys( a:keys, 'tx!' )
 endfunction
 
-function! FeedAndCheckAgain( keys, func )
+function! s:FeedAndCheckAgain( keys, func )
   call timer_start( 500, a:func )
   call feedkeys( a:keys )
 endfunction
 
-function! WaitForCompletion()
+function! s:WaitForCompletion()
   call WaitForAssert( {->
         \ assert_true( pyxeval( 'ycm_state.GetCurrentCompletionRequest() is not None' ) )
         \ } )
@@ -47,7 +45,7 @@ function! WaitForCompletion()
         \ }, 10000 )
 endfunction
 
-function! CheckCurrentLine( expected_value )
+function! s:CheckCurrentLine( expected_value )
   return assert_equal( a:expected_value, getline( '.' ) )
 endfunction
 
@@ -64,11 +62,11 @@ function! Test_Compl_After_Trigger()
   " Must do the checks in a timer callback because we need to stay in insert
   " mode until done.
   function! Check( id ) closure
-    call WaitForCompletion()
+    call s:WaitForCompletion()
     call feedkeys( "\<ESC>" )
   endfunction
 
-  call FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
+  call s:FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
   " Checks run in insert mode, then exit insert mode.
   call assert_false( pumvisible(), 'pumvisible()' )
 
@@ -83,7 +81,7 @@ function! Test_Force_Semantic_TopLevel()
   call setpos( '.', [ 0, 17, 5 ] )
 
   function! Check( id )
-    cal WaitForCompletion()
+    cal s:WaitForCompletion()
     let items = complete_info( [ 'items' ] )[ 'items' ]
     call assert_equal( 1, len( filter( items, 'v:val.abbr ==# "Foo"' ) ),
           \ 'Foo should be in the suggestions' )
@@ -96,7 +94,7 @@ function! Test_Force_Semantic_TopLevel()
     call feedkeys( "\<ESC>" )
   endfunction
 
-  call FeedAndCheckMain( "i\<C-Space>", funcref( 'Check' ) )
+  call s:FeedAndCheckMain( "i\<C-Space>", funcref( 'Check' ) )
   " Checks run in insert mode, then exit insert mode.
   call assert_false( pumvisible(), 'pumvisible()' )
 
@@ -115,38 +113,38 @@ function! Test_Select_Next_Previous()
   call test_override( 'char_avail', 1 )
 
   function! Check( id )
-    call WaitForCompletion()
+    call s:WaitForCompletion()
 
-    call CheckCurrentLine( '  foo.' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:CheckCurrentLine( '  foo.' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<Tab>", funcref( 'Check2' ) )
+    call s:FeedAndCheckAgain( "\<Tab>", funcref( 'Check2' ) )
   endfunction
 
   function! Check2( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( '  foo.c' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( '  foo.c' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<Tab>", funcref( 'Check3' ) )
+    call s:FeedAndCheckAgain( "\<Tab>", funcref( 'Check3' ) )
   endfunction
 
   function! Check3( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( '  foo.x' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( '  foo.x' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<BS>y", funcref( 'Check4' ) )
+    call s:FeedAndCheckAgain( "\<BS>y", funcref( 'Check4' ) )
   endfunction
 
   function! Check4( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( '  foo.y' )
-    call CheckCompletionItems( [ 'y' ] )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( '  foo.y' )
+    call s:CheckCompletionItems( [ 'y' ] )
     call feedkeys( "\<ESC>" )
   endfunction
 
-  call FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
+  call s:FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
   " Checks run in insert mode, then exit insert mode.
   call assert_false( pumvisible(), 'pumvisible()' )
 
@@ -165,37 +163,37 @@ function! Test_Enter_Delete_Chars_Updates_Filter()
   call test_override( 'char_avail', 1 )
 
   function! Check1( id )
-    call WaitForCompletion()
-    call CheckCompletionItems( [ 'colourOfLine', 'lengthOfLine' ] )
-    call FeedAndCheckAgain( "\<BS>", funcref( 'Check2' ) )
+    call s:WaitForCompletion()
+    call s:CheckCompletionItems( [ 'colourOfLine', 'lengthOfLine' ] )
+    call s:FeedAndCheckAgain( "\<BS>", funcref( "Check2" ) )
   endfunction
 
   function! Check2( id )
-    call WaitForCompletion()
-    call CheckCompletionItems( [
+    call s:WaitForCompletion()
+    call s:CheckCompletionItems( [
           \ 'operator=(…)',
           \ 'colourOfLine',
           \ 'lengthOfLine',
           \ 'RED_AND_YELLOW' ] )
-    call FeedAndCheckAgain( 'w', funcref( 'Check3' ) )
+    call s:FeedAndCheckAgain( 'w', funcref( 'Check3' ) )
   endfunction
 
   function! Check3( id )
-    call WaitForCompletion()
-    call CheckCompletionItems( [ 'RED_AND_YELLOW' ] )
+    call s:WaitForCompletion()
+    call s:CheckCompletionItems( [ 'RED_AND_YELLOW' ] )
     " now type something that doesnt match
-    call FeedAndCheckAgain( 'this_does_not_match', funcref( 'Check4' ) )
+    call s:FeedAndCheckAgain( 'this_does_not_match', funcref( 'Check4' ) )
   endfunction
 
   function! Check4( id )
     call WaitForAssert( { -> assert_false( pumvisible() ) } )
-    call CheckCurrentLine(
+    call s:CheckCurrentLine(
           \ '  p->line.colourOfLine = Line::owthis_does_not_match' )
-    call CheckCompletionItems( [] )
+    call s:CheckCompletionItems( [] )
     call feedkeys( "\<Esc>" )
   endfunction
 
-  call FeedAndCheckMain( 'cl:ol', funcref( 'Check1' ) )
+  call s:FeedAndCheckMain( 'cl:ol', funcref( 'Check1' ) )
   " Checks run in insert mode, then exit insert mode.
   call assert_false( pumvisible(), 'pumvisible()' )
 
@@ -225,36 +223,36 @@ function! Test_OmniComplete_Filter()
   let s:omnifunc_items = [ 'test', 'testing', 'testy' ]
 
   function! Check1( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'te:te' )
-    call CheckCompletionItems( [ 'test', 'testy', 'testing' ], 'word' )
-    call FeedAndCheckAgain( 'y', funcref( 'Check2' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'te:te' )
+    call s:CheckCompletionItems( [ 'test', 'testy', 'testing' ], 'word' )
+    call s:FeedAndCheckAgain( 'y', funcref( 'Check2' ) )
   endfunction
 
   function! Check2( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'te:tey' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
-    call FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'te:tey' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
   endfunction
 
   function! Check3( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'te:testy' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
-    call FeedAndCheckAgain( "\<C-p>", funcref( 'Check4' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'te:testy' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:FeedAndCheckAgain( "\<C-p>", funcref( 'Check4' ) )
   endfunction
 
   function! Check4( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'te:tey' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'te:tey' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
     call feedkeys( "\<Esc>" )
   endfunction
 
   call setline(1, 'te:' )
   call setpos( '.', [ 0, 1, 3 ] )
-  call FeedAndCheckMain( 'ate', 'Check1' )
+  call s:FeedAndCheckMain( 'ate', 'Check1' )
 
   %bwipeout!
 endfunction
@@ -272,36 +270,36 @@ function! Test_OmniComplete_Force()
   let s:omnifunc_items = [ 'test', 'testing', 'testy' ]
 
   function! Check1( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'te' )
-    call CheckCompletionItems( [ 'test', 'testy', 'testing' ], 'word' )
-    call FeedAndCheckAgain( 'y', funcref( 'Check2' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'te' )
+    call s:CheckCompletionItems( [ 'test', 'testy', 'testing' ], 'word' )
+    call s:FeedAndCheckAgain( 'y', funcref( 'Check2' ) )
   endfunction
 
   function! Check2( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'tey' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
-    call FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'tey' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
   endfunction
 
   function! Check3( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'testy' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
-    call FeedAndCheckAgain( "\<C-p>", funcref( 'Check4' ) )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'testy' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:FeedAndCheckAgain( "\<C-p>", funcref( 'Check4' ) )
   endfunction
 
   function! Check4( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'tey' )
-    call CheckCompletionItems( [ 'testy' ], 'word' )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'tey' )
+    call s:CheckCompletionItems( [ 'testy' ], 'word' )
     call feedkeys( "\<Esc>" )
   endfunction
 
   call setline(1, 'te' )
   call setpos( '.', [ 0, 1, 3 ] )
-  call FeedAndCheckMain( "a\<C-Space>", 'Check1' )
+  call s:FeedAndCheckMain( "a\<C-Space>", 'Check1' )
   %bwipeout!
 endfunction
 
@@ -317,32 +315,32 @@ function! Test_Completion_FixIt()
         \ 'test/testdata/cpp/auto_include.cc', {} )
 
   function Check1( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'do_a' )
-    call CheckCompletionItems( [ 'do_a_thing(Thing thing)',
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'do_a' )
+    call s:CheckCompletionItems( [ 'do_a_thing(Thing thing)',
                                  \ 'do_another_thing()' ] )
-    call FeedAndCheckAgain( "\<Tab>" , funcref( 'Check2' ) )
+    call s:FeedAndCheckAgain( "\<Tab>" , funcref( 'Check2' ) )
   endfunction
 
   function Check2( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( 'do_a_thing' )
-    call CheckCompletionItems( [ 'do_a_thing(Thing thing)',
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( 'do_a_thing' )
+    call s:CheckCompletionItems( [ 'do_a_thing(Thing thing)',
                                  \ 'do_another_thing()' ] )
-    call FeedAndCheckAgain( '(' , funcref( 'Check3' ) )
+    call s:FeedAndCheckAgain( '(' , funcref( 'Check3' ) )
   endfunction
 
 
   function Check3( id )
     call WaitForAssert( {-> assert_false( pumvisible(), 'pumvisible()' ) } )
-    call CheckCurrentLine( 'do_a_thing(' )
+    call s:CheckCurrentLine( 'do_a_thing(' )
     call assert_equal( '#include "auto_include.h"', getline( 1 ) )
     call feedkeys( "\<Esc>" )
   endfunction
 
 
   call setpos( '.', [ 0, 3, 1 ] )
-  call FeedAndCheckMain( "Ado_a\<C-Space>", funcref( 'Check1' ) )
+  call s:FeedAndCheckMain( "Ado_a\<C-Space>", funcref( 'Check1' ) )
 
   %bwipeout!
 endfunction
@@ -360,46 +358,46 @@ function! Test_Select_Next_Previous_InsertModeMapping()
   call test_override( 'char_avail', 1 )
 
   function! Check( id )
-    call WaitForCompletion()
+    call s:WaitForCompletion()
 
-    call CheckCurrentLine( '  foo.' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:CheckCurrentLine( '  foo.' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<C-n>", funcref( 'Check2' ) )
+    call s:FeedAndCheckAgain( "\<C-n>", funcref( 'Check2' ) )
   endfunction
 
   function! Check2( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( '  foo.c' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( '  foo.c' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
+    call s:FeedAndCheckAgain( "\<C-n>", funcref( 'Check3' ) )
   endfunction
 
   function! Check3( id )
-    call WaitForCompletion()
-    call CheckCurrentLine( '  foo.x' )
-    call CheckCompletionItems( [ 'c', 'x', 'y' ] )
+    call s:WaitForCompletion()
+    call s:CheckCurrentLine( '  foo.x' )
+    call s:CheckCompletionItems( [ 'c', 'x', 'y' ] )
 
-    call FeedAndCheckAgain( "\<BS>a", funcref( 'Check4' ) )
+    call s:FeedAndCheckAgain( "\<BS>a", funcref( 'Check4' ) )
   endfunction
 
   function! Check4( id )
-    call CheckCurrentLine( '  foo.a' )
-    call CheckCompletionItems( [] )
-    call FeedAndCheckAgain( "\<C-n>", funcref( 'Check5' ) )
+    call s:CheckCurrentLine( '  foo.a' )
+    call s:CheckCompletionItems( [] )
+    call s:FeedAndCheckAgain( "\<C-n>", funcref( 'Check5' ) )
   endfunction
 
   function! Check5( id )
     " The last ctrl-n moved to the next line
-    call CheckCurrentLine( '}' )
+    call s:CheckCurrentLine( '}' )
     call assert_equal( [ 0, 12, 2, 0 ], getpos( '.' ) )
-    call CheckCompletionItems( [] )
+    call s:CheckCompletionItems( [] )
     call feedkeys( "\<Esc>" )
   endfunction
 
 
-  call FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
+  call s:FeedAndCheckMain( 'cl.', funcref( 'Check' ) )
   " Checks run in insert mode, then exit insert mode.
   call assert_false( pumvisible(), 'pumvisible()' )
 

@@ -1,10 +1,11 @@
-FROM ubuntu:20.04
+FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL C.UTF-8
 
-ARG VIM_VERSION=v8.2.1456
+ARG VIM_VERSION=v8.1.1875
 ARG YCM_VIM_PYTHON=python3
+ARG YCM_PYTHON_VERSION=3.5.2
 
 RUN apt-get update && \
   apt-get -y dist-upgrade && \
@@ -18,12 +19,14 @@ RUN apt-get update && \
                      cmake \
                      curl \
                      sudo \
+                     python-dev \
+                     python-pip \
+                     python-setuptools \
                      python3-dev \
                      python3-pip \
                      python3-setuptools \
                      openjdk-11-jdk-headless \
                      npm \
-                     vim-nox \
                      zlib1g-dev && \
   apt-get -y autoremove
 
